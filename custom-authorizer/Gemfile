@@ -1,0 +1,11 @@
+source "https://rubygems.org"
+
+ruby '~> 2.7.0'
+
+gem "jwt", "~> 2.2"
+
+gem "concurrent-ruby", "~> 1.1"
+
+gem "aws-sdk-dynamodb", "~> 1"
+
+gem "aws-sdk-secretsmanager", "~> 1"

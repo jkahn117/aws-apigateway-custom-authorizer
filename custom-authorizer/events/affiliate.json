@@ -1,0 +1,5 @@
+{
+  "type":"TOKEN",
+  "authorizationToken":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJvcmdJZCI6MTIzNDV9.qPssFjOaTcJDtl5beO1xhefz1Raq2Nr1kq8RZxWfX5o",
+  "methodArn":"arn:aws:execute-api:us-east-1:1234567890:abc1234/dev/GET/pets"
+}

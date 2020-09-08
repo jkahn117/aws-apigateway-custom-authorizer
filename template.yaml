@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Sample custom authorizer implementation
+
+Parameters:
+  Stage:
+    Type: String
+    Description: The stage where the application is running in, e.g., dev, prod.
+    Default: 'dev'
+
+  ProjectName:
+    Type: String
+    Description: The name of this project
+    Default: 'custom-auth-sample'
+
+Globals:
+  Function:
+    Timeout: 10
+    Handler: app.handler
+    Runtime: ruby2.7
+    Tracing: Active
+
+Resources:
+  # Custom Authorizer Function
+  CustomAuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: custom-authorizer/
+      Layers:
+        - !Ref SupportLayer
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref AffiliateTable
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref JwtSecret
+      Environment:
+        Variables:
+          AFFILIATE_TABLE: custom-auth-sample-dev  # !Ref AffiliateTable
+          SECRET_NAME: !Sub ${ProjectName}-jwt-secret-${Stage}
+
+  JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: !Sub JWT secrets for ${ProjectName}
+      SecretString: 'my-secret-key'
+      Name: !Sub ${ProjectName}-jwt-secret-${Stage}
+
+  # Table of customer data, for custom authorizer
+  AffiliateTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: OrgId
+        Type: String
+      TableName: !Sub ${ProjectName}-${Stage}
+
+  # API Gateway
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Auth:
+        Authorizers:
+          JwtTokenAuth:
+            FunctionArn: !GetAtt CustomAuthorizerFunction.Arn
+            Identity:
+              # Header: '' # Defaults to 'Authorization'
+              ValidationExpression: Bearer.*
+              ReauthorizeEvery: 300
+        DefaultAuthorizer: JwtTokenAuth
+      StageName: !Ref Stage
+      TracingEnabled: true
+
+  GoldUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      ApiStages:
+        - ApiId: !Ref RestApi
+          Stage: !Ref Stage
+      Description: Sample affiliate API - GOLD plan
+      Quota:
+        Limit: 100
+        Period: DAY
+      Throttle:
+        BurstLimit: 10
+        RateLimit: 5
+      UsagePlanName: !Sub "${ProjectName}-${Stage}-GOLD"
+
+  # create a circular reference if we drop the usage plan id as an env var in function
+  # so using parameter store as a go between
+  GoldUsagePlanParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "${ProjectName}-${Stage}-gold"
+      Type: String
+      Value: !Ref GoldUsagePlan
+      Description: !Sub "${ProjectName} GOLD usage plan"
+
+  SilverUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      ApiStages:
+        - ApiId: !Ref RestApi
+          Stage: !Ref Stage
+      Description: Sample affiliate API - SILVER plan
+      Quota:
+        Limit: 10
+        Period: DAY
+      Throttle:
+        BurstLimit: 3
+        RateLimit: 1
+      UsagePlanName: !Sub "${ProjectName}-${Stage}-SILVER"
+
+  SilverUsagePlanParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "${ProjectName}-${Stage}-silver"
+      Type: String
+      Value: !Ref SilverUsagePlan
+      Description: !Sub "${ProjectName} SILVER usage plan"
+
+
+  ## Layer
+  SupportLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      CompatibleRuntimes:
+        - ruby2.7
+      ContentUri: ./layer
+      Description: !Sub "Supporting layer for ${ProjectName}"
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: makefile
+
+  ## API - Functions ##
+  AddAffiliateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: api/add-affiliate
+      Layers:
+        - !Ref SupportLayer
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AffiliateTable
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - apigateway:POST
+              Resource:
+                - !Sub arn:aws:apigateway:${AWS::Region}::/apikeys
+                # below is not ideal, would rather inject the usage plan ids, but circular reference....
+                - !Sub arn:aws:apigateway:${AWS::Region}::/usageplans/*/keys
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}-${Stage}-silver"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}-${Stage}-gold"
+      Environment:
+        Variables:
+          AFFILIATE_TABLE: !Ref AffiliateTable
+          GOLD_USAGE_PLAN_PARAM: !Sub ${ProjectName}-${Stage}-gold
+          SILVER_USAGE_PLAN_PARAM: !Sub ${ProjectName}-${Stage}-silver
+      Events:
+        GetEvent:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /admin/add
+            RestApiId: !Ref RestApi
+
+  ListProductsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: api/list-products/
+      Layers:
+        - !Ref SupportLayer
+      Events:
+        GetEvent:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /products
+            RestApiId: !Ref RestApi
+            Auth:
+              ApiKeyRequired: true
+
+  GetProductFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: api/get-product/
+      Layers:
+        - !Ref SupportLayer
+      Events:
+        GetEvent:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /products/{id}
+            RestApiId: !Ref RestApi
+            Auth:
+              ApiKeyRequired: true
+        
+Outputs:
+  ApiUrl:
+    Description: API Url
+    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Stage}

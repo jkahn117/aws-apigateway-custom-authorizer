@@ -1,0 +1,15 @@
+config:
+  target: "https://ch4rttzfa9.execute-api.us-east-1.amazonaws.com/dev"
+  phases:
+    - duration: 60
+      arrivalRate: 15
+  defaults:
+    headers:
+      Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6Ik5ldyBBZmZpbGlhdGUiLCJpYXQiOjE1MTYyMzkwMjIsIm9yZ0lkIjoiODFjOTU2ODItMTA0YS00NTY3LTlmZjUtZTBhZjc5NGQzOTJlIn0.-9tXCDNaAXpOGSlek7ENpMjuFXq1yzWfXmBJUgCtQ3Q"
+scenarios:
+  - flow:
+    - get:
+        url: "/products"
+    - get:
+        url: "/products/1"
+
