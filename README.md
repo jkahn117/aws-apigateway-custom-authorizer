@@ -1,6 +1,6 @@
 # API Gateway Lambda Authorizers
 
-Blog post: https://blog.iamjkahn.com/
+Blog post: [https://blog.iamjkahn.com/2020/09/exploring-api-gateway-custom-authorizers.html](https://blog.iamjkahn.com/2020/09/exploring-api-gateway-custom-authorizers.html)
 
 This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI.
 
